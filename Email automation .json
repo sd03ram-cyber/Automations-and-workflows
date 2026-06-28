@@ -1,0 +1,180 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "assignment-upload",
+        "options": {}
+      },
+      "id": "65b34df9-4943-4966-8da4-59bba91ea2e1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "9af3c2f7-c9ca-4aa8-ad18-a255a3525e65"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.file_path }}",
+        "options": {}
+      },
+      "id": "f1cc6723-b60f-4bfb-a397-a072ce2cbb19",
+      "name": "Download File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        208,
+        0
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "command": "tesseract {{ $json.file_path }} stdout"
+      },
+      "id": "95d8c894-8981-4924-b087-33bd4ad7099c",
+      "name": "OCR Text Extraction",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.command_output || '';\nconst prompt = `Evaluate this student assignment:\n\nTopic: ${$node['Webhook Trigger'].json.assignment_name}\nSubject: ${$node['Webhook Trigger'].json.subject}\n\nASSIGNMENT TEXT:\n${text}\n\nProvide evaluation in this JSON format:\n{\n  \"correctness_score\": <0-10>,\n  \"completeness_score\": <0-10>,\n  \"grammar_score\": <0-10>,\n  \"feedback\": \"<constructive feedback>\",\n  \"strengths\": [\"strength1\", \"strength2\"],\n  \"weaknesses\": [\"weakness1\", \"weakness2\"],\n  \"keywords_found\": [\"keyword1\", \"keyword2\"]\n}`;\nreturn {text, prompt};"
+      },
+      "id": "4d640a56-4636-46a2-94b2-4587cfb0835e",
+      "name": "Prepare AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "authentication": "predefinedCredentialType",
+        "options": {}
+      },
+      "id": "f7a613a0-121d-418a-bfb3-8d4f83eeb0ec",
+      "name": "Call Ollama AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json.response;\nconst parsed = JSON.parse(response);\nreturn {\n  correctness_score: parsed.correctness_score || 5,\n  completeness_score: parsed.completeness_score || 5,\n  grammar_score: parsed.grammar_score || 5,\n  feedback: parsed.feedback || 'No feedback provided',\n  strengths: parsed.strengths || [],\n  weaknesses: parsed.weaknesses || [],\n  keywords_found: parsed.keywords_found || []\n};"
+      },
+      "id": "77fe04b1-fb88-4d3a-9bb1-6fd093fccc4c",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const scores = {\n  correctness: $json.correctness_score,\n  completeness: $json.completeness_score,\n  grammar: $json.grammar_score\n};\nconst average = (scores.correctness + scores.completeness + scores.grammar) / 3;\nreturn {\n  marks: {\n    correctness: scores.correctness,\n    completeness: scores.completeness,\n    grammar: scores.grammar,\n    final: parseFloat(average.toFixed(2))\n  },\n  feedback: $json.feedback,\n  strengths: $json.strengths,\n  weaknesses: $json.weaknesses,\n  keywords_found: $json.keywords_found\n};"
+      },
+      "id": "a88588b9-6932-4bdd-8e20-45491737617c",
+      "name": "Calculate Final Marks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO evaluations (assignment_id, extracted_text, correctness_score, completeness_score, grammar_score, final_marks, feedback, strengths, weaknesses, keywords_found)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\nRETURNING *;",
+        "options": {}
+      },
+      "id": "7bf65224-1656-44a8-baa0-d7366d1a5711",
+      "name": "Store in Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1408,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d8e75204-7814-4e38-8791-b528a9e5064c",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Ollama AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Ollama AI": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Database": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f0e63137-7ddb-4ec1-99ca-f7c4853b3801",
+  "meta": {
+    "instanceId": "b009b57f52844055aabdd6b660ad5c52944b1eeb0b12ea6baef1c762556ac545"
+  },
+  "nodeGroups": [],
+  "id": "GPbArMUBwtgWKKW1",
+  "tags": []
+}
