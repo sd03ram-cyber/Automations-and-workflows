@@ -1,5 +1,5 @@
 {
-  "name": "My workflow",
+  "name": "Email Automation & Assignment Evaluation",
   "nodes": [
     {
       "parameters": {
@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const text = $json.command_output || '';\nconst prompt = `Evaluate this student assignment:\n\nTopic: ${$node['Webhook Trigger'].json.assignment_name}\nSubject: ${$node['Webhook Trigger'].json.subject}\n\nASSIGNMENT TEXT:\n${text}\n\nProvide evaluation in this JSON format:\n{\n  \"correctness_score\": <0-10>,\n  \"completeness_score\": <0-10>,\n  \"grammar_score\": <0-10>,\n  \"feedback\": \"<constructive feedback>\",\n  \"strengths\": [\"strength1\", \"strength2\"],\n  \"weaknesses\": [\"weakness1\", \"weakness2\"],\n  \"keywords_found\": [\"keyword1\", \"keyword2\"]\n}`;\nreturn {text, prompt};"
+        "jsCode": "const text = $json.command_output || '';\nconst prompt = `Evaluate this student assignment:\\n\\nTopic: ${$node['Webhook Trigger'].json.assignment_name}\\nSubject: ${$node['Webhook Trigger'].json.subject}\\n\\nASSIGNMENT TEXT:\\n${text}\\n\\nProvide evaluation in this JSON format:\\n{\\n  \"correctness_score\": <0-10>,\\n  \"completeness_score\": <0-10>,\\n  \"grammar_score\": <0-10>,\\n  \"feedback\": \"<constructive feedback>\",\\n  \"strengths\": [\"strength1\", \"strength2\"],\\n  \"weaknesses\": [\"weakness1\", \"weakness2\"],\\n  \"keywords_found\": [\"keyword1\", \"keyword2\"]\\n}`;\nreturn {text, prompt};"
       },
       "id": "4d640a56-4636-46a2-94b2-4587cfb0835e",
       "name": "Prepare AI Prompt",
@@ -61,7 +61,9 @@
       "parameters": {
         "method": "POST",
         "url": "http://localhost:11434/api/generate",
-        "authentication": "predefinedCredentialType",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"mistral\",\n  \"prompt\": \"{{ $json.prompt.replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\",\n  \"stream\": false\n}",
         "options": {}
       },
       "id": "f7a613a0-121d-418a-bfb3-8d4f83eeb0ec",
@@ -130,6 +132,39 @@
   ],
   "pinData": {},
   "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File": {
+      "main": [
+        [
+          {
+            "node": "OCR Text Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Text Extraction": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Prepare AI Prompt": {
       "main": [
         [
@@ -146,6 +181,28 @@
         [
           {
             "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Calculate Final Marks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Final Marks": {
+      "main": [
+        [
+          {
+            "node": "Store in Database",
             "type": "main",
             "index": 0
           }
